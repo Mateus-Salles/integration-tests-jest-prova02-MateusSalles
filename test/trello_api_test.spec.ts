@@ -1,6 +1,8 @@
+import 'dotenv/config';
 import pactum from 'pactum';
 import { faker } from '@faker-js/faker';
 import { StatusCodes } from 'http-status-codes';
+import { SimpleReporter } from '../simple-reporter';
 
 const BASE_URL: string =
 process.env.TRELLO_BASE_URL || 'https://api.trello.com/1';
@@ -8,10 +10,12 @@ process.env.TRELLO_BASE_URL || 'https://api.trello.com/1';
 const KEY: string = process.env.TRELLO_API_KEY;
 const TOKEN: string = process.env.TRELLO_API_TOKEN;
 const BOARD_ID: string = process.env.TRELLO_BOARD_ID;
+const rep = SimpleReporter;
 
 let LIST_ID: string;
 let CARD_ID: string;
 
+pactum.request.setDefaultTimeout(30000);
 pactum.request.setBaseUrl(BASE_URL);
 
 function authorized(spec) {
@@ -20,13 +24,15 @@ function authorized(spec) {
     .withQueryParams('token', TOKEN);
 }
 
-describe('Trello API - Cards', () => {
+describe('Trello API', () => {
     beforeAll(async () => {
         if (!KEY || !TOKEN || !BOARD_ID) {
             throw new Error(
                 'Defina TRELLO_KEY, TRELLO_TOKEN e TRELLO_BOARD_ID no .env.',
             );
         }
+
+        pactum.reporter.add(rep);
 
         // ==========================================
         // 1. CRIA A LISTA
@@ -74,6 +80,29 @@ describe('Trello API - Cards', () => {
     // ==========================================
     // TESTES
     // ==========================================
+    
+    test('PUT /lists/{id}/closed - deve arquivar uma lista', async () => {
+        await authorized(
+            pactum
+            .spec()
+            .put(`/lists/${LIST_ID}/closed`)
+            .withQueryParams('value', true)
+        )
+        .expectStatus(StatusCodes.OK)
+        .toss()
+    })
+
+    test('POST /lists - deve criar uma nova lista', async () => {
+        const list = await authorized(
+            pactum
+            .spec()
+            .post('/lists')
+            .withQueryParams('name', `Lista para a prova - ${faker.string.alphanumeric(8)}`)
+            .withQueryParams('idBoard', BOARD_ID)
+        )
+        .expectStatus(StatusCodes.OK)
+        .toss()
+    })
 
     test('GET /cards/{id} - deve buscar o card', async () => {
         await authorized(
@@ -152,10 +181,13 @@ describe('Trello API - Cards', () => {
             await authorized(
                 pactum
                 .spec()
-                .delete(`/lists/${LIST_ID}/closed`),
+                .put(`/lists/${LIST_ID}/closed`)
+                .withQueryParams('value', true)
             )
             .expectStatus(StatusCodes.OK)
             .toss();
         }
+
+        pactum.reporter.end();
     });
 });
